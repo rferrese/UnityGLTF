@@ -1,4 +1,4 @@
-﻿using GLTF;
+using GLTF;
 using GLTF.Extensions;
 using GLTF.Schema;
 using GLTF.Utilities;
@@ -629,18 +629,18 @@ namespace UnityGLTF
 
 		protected virtual async Task ConstructUnityTexture(Stream stream, bool markGpuOnly, bool isLinear, GLTFImage image, int imageCacheIndex)
 		{
-			Texture2D texture = new Texture2D(0, 0, TextureFormat.RGBA32, true, isLinear);
+			byte[] buffer;
 
 			if (stream is MemoryStream)
 			{
 				using (MemoryStream memoryStream = stream as MemoryStream)
 				{
-					texture.LoadImage(memoryStream.ToArray(), markGpuOnly);
+					buffer = memoryStream.ToArray();
 				}
 			}
 			else
 			{
-				byte[] buffer = new byte[stream.Length];
+				buffer = new byte[stream.Length];
 
 				// todo: potential optimization is to split stream read into multiple frames (or put it on a thread?)
 				if (stream.Length > int.MaxValue)
@@ -650,9 +650,14 @@ namespace UnityGLTF
 				stream.Read(buffer, 0, (int)stream.Length);
 
 				if (_asyncCoroutineHelper != null) await _asyncCoroutineHelper.YieldOnTimeout();
-				//	NOTE: the second parameter of LoadImage() marks non-readable, but we can't mark it until after we call Apply()
-				texture.LoadImage(buffer, markGpuOnly);
 			}
+
+			int w, h;
+			ImageHelper.CalculateImageWidthHeight(buffer, out w, out h);
+			Texture2D texture = new Texture2D(w, h, TextureFormat.RGBA32, true, isLinear);
+
+			//	NOTE: the second parameter of LoadImage() marks non-readable, but we can't mark it until after we call Apply()
+			texture.LoadImage(buffer, markGpuOnly);
 
 			_assetCache.ImageCache[imageCacheIndex] = texture;
 		}
@@ -1911,14 +1916,17 @@ namespace UnityGLTF
 
 		protected virtual void ConstructImageFromGLB(GLTFImage image, int imageCacheIndex)
 		{
-			var texture = new Texture2D(0, 0);
 			var bufferView = image.BufferView.Value;
-			var data = new byte[bufferView.ByteLength];
+            byte[] buffer = new byte[bufferView.ByteLength];
 
 			var bufferContents = _assetCache.BufferCache[bufferView.Buffer.Id];
 			bufferContents.Stream.Position = bufferView.ByteOffset + bufferContents.ChunkOffset;
-			bufferContents.Stream.Read(data, 0, data.Length);
-			texture.LoadImage(data);
+            bufferContents.Stream.Read(buffer, 0, buffer.Length);
+			
+            int w, h;
+            ImageHelper.CalculateImageWidthHeight(buffer, out w, out h);
+            Texture2D texture = new Texture2D(w, h);
+            texture.LoadImage(buffer);
 
 			_assetCache.ImageCache[imageCacheIndex] = texture;
 
